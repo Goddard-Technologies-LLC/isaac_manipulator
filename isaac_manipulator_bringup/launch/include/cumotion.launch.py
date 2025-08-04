@@ -206,13 +206,15 @@ def generate_launch_description() -> LaunchDescription:
     default_urdf_file_path = os.path.join(
         get_package_share_directory("isaac_ros_cumotion_robot_description"),
         "urdf",
-        "ur5e_robotiq_2f_140.urdf",
+        "ur5e_robotiq_2f_140.urdf"
+        # "ur3e_schmalz.urdf",
     )
 
     default_xrdf_file_path = os.path.join(
         get_package_share_directory("isaac_ros_cumotion_robot_description"),
         "xrdf",
         "ur5e_robotiq_2f_140.xrdf",
+        # "ur3e_schmalz.xrdf",
     )
 
     args = lu.ArgumentContainer()

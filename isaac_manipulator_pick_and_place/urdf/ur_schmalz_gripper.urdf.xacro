@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="schmalz_gripper">
+    <!-- parameters -->
+    <!-- PJG copied and pasted this from the robotiq version. Things have been heavily modified-->
+    <xacro:arg name="name" default="ur3e" /> <!-- unknown -->
+    <xacro:arg name="ur_type" default="ur3e" /> <!-- unknown -->
+    <xacro:arg name="gripper_type" default="schmalz" /> <!-- unknown -->
+    <xacro:arg name="grasp_parent_frame" default="schmalz_base_link" /> <!-- unknown -->
+
+    <!-- Import macros -->    
+    <xacro:include filename="$(find schmalz_description)/urdf/$(arg gripper_type)_macro.urdf.xacro" />
+
+    <xacro:include filename="$(find ur_description)/urdf/ur.urdf.xacro" />
+
+<!-- TODO maybe delete this if it's a control node...? -->
+    <xacro:schmalz_gripper name="schmalz_gripper_node"
+        prefix=""
+        parent="tool0">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+    </xacro:schmalz_gripper>
+
+    <link name="gripper_frame">
+        <inertial>
+            <!-- Dummy inertial parameters to avoid link lumping-->
+            <mass value="0.01"/>
+            <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+        </inertial>
+    </link>
+    <joint name="gripper_joint" type="fixed">
+        <origin rpy="0 0 0" xyz="0 0 0"/>
+        <parent link="$(arg grasp_parent_frame)"/>
+        <child link="gripper_frame"/>
+    </joint>
+
+    <link name="grasp_frame">
+        <inertial>
+            <!-- Dummy inertial parameters to avoid link lumping-->
+            <mass value="0.01"/>
+            <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+        </inertial>
+    </link>
+    <joint name="grasp_joint" type="fixed">
+        <origin rpy="0 0 0" xyz="0 0 0.09"/>
+        <parent link="gripper_frame"/>
+        <child link="grasp_frame"/>
+    </joint>
+</robot>

@@ -199,7 +199,7 @@ class GraspReader:
 
         Args:
             index (int): index of grasp poses in file that was selected.
-            gripper_frame (str): The frame w.r.t to which the poses were recorded unsing Grasp
+            gripper_frame (str): The frame w.r.t to which the poses were recorded unsing Graspl
                 editor
             grasp_frame (str): The grasp frame that is at an offset w.r.t to the gripper frame such
                 that the TF aligns between the gripper finger tips

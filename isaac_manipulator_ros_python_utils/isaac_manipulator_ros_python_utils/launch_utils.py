@@ -192,6 +192,12 @@ def get_gripper_collision_links(gripper_name: GripperType = GripperType.ROBOTIQ_
             'tool0',
             'wrist_3_link',
         ]
+    elif gripper_name == GripperType.SCHMALZ:
+        return [
+            'schmalz_base_link',
+            'tool0',
+            'wrist_3_link',
+        ]
     else:
         raise NotImplementedError(f"Gripper type {gripper_name} not supported")
 

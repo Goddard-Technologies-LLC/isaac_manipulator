@@ -32,6 +32,8 @@ from launch.conditions import IfCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution, PythonExpression
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+import logging
+
 from moveit_configs_utils import MoveItConfigsBuilder
 from isaac_manipulator_ros_python_utils.launch_utils import (
     get_gripper_collision_links
@@ -45,10 +47,13 @@ import isaac_manipulator_ros_python_utils.constants as constants
 def launch_setup(context, *args, **kwargs):
     # Initialize Arguments
     ur_type = LaunchConfiguration('ur_type')
+
+    # TODO update
     gripper_type = LaunchConfiguration('gripper_type')
     object_attachment_type = LaunchConfiguration('object_attachment_type')
     attach_object_mesh_file_path = LaunchConfiguration('attach_object_mesh_file_path')
     attach_object_scale = LaunchConfiguration('object_attachment_scale')
+
     robot_ip = LaunchConfiguration('robot_ip')
     voxel_size = LaunchConfiguration('voxel_size')
     runtime_config_package = LaunchConfiguration('runtime_config_package')
@@ -56,30 +61,44 @@ def launch_setup(context, *args, **kwargs):
     initial_joint_controller = LaunchConfiguration('initial_joint_controller')
     camera_type = str(context.perform_substitution(LaunchConfiguration('camera_type')))
     num_cameras = LaunchConfiguration('num_cameras')
+
+    # TODO remove
     hawk_depth_mode = str(context.perform_substitution(LaunchConfiguration('hawk_depth_mode')))
+
     time_sync_slop = str(context.perform_substitution(LaunchConfiguration('time_sync_slop')))
     use_pose_from_rviz = LaunchConfiguration('use_pose_from_rviz')
-    rtdetr_object_class_id = str(context.perform_substitution(
-        LaunchConfiguration('rtdetr_object_class_id')))
+    
+    # TODO remove
+    # rtdetr_object_class_id = str(context.perform_substitution(
+    #     LaunchConfiguration('rtdetr_object_class_id')))
+    
     filter_depth_buffer_time = str(context.perform_substitution(
         LaunchConfiguration('filter_depth_buffer_time')))
-    script_filename = PathJoinSubstitution(
-        [FindPackageShare('ur_client_library'), 'resources', 'external_control.urscript']
-    )
-    input_recipe_filename = PathJoinSubstitution(
-        [FindPackageShare('ur_robot_driver'), 'resources', 'rtde_input_recipe.txt']
-    )
-    output_recipe_filename = PathJoinSubstitution(
-        [FindPackageShare('ur_robot_driver'), 'resources', 'rtde_output_recipe.txt']
-    )
+    
+    # TODO not sure what they use this for.... maybe gripper controls?
+    # script_filename = PathJoinSubstitution(
+    #     [FindPackageShare('ur_client_library'), 'resources', 'external_control.urscript']
+    # )
+    # input_recipe_filename = PathJoinSubstitution(
+    #     [FindPackageShare('ur_robot_driver'), 'resources', 'rtde_input_recipe.txt']
+    # )
+    # output_recipe_filename = PathJoinSubstitution(
+    #     [FindPackageShare('ur_robot_driver'), 'resources', 'rtde_output_recipe.txt']
+    # )
+
+    # TODO verify frame names
     grasp_parent_frame = ''
     if gripper_type.perform(context) == 'robotiq_2f_140':
         grasp_parent_frame = 'robotiq_base_link'
     elif gripper_type.perform(context) == 'robotiq_2f_85':
         grasp_parent_frame = 'robotiq_85_base_link'
+    elif gripper_type.perform(context) == "schmalz":
+        grasp_parent_frame = "schmalz_link"
     else:
         raise NotImplementedError('Gripper type is not supported')
 
+    # TODO, update files to be gripper agnostic?
+    # OR use my own file hehe
     robot_description_content = Command(
         [
             PathJoinSubstitution([FindExecutable(name='xacro')]),
@@ -113,18 +132,20 @@ def launch_setup(context, *args, **kwargs):
             ' '
         ]
     )
-
+    logging.Logger.debug("\n\nTEST\n\n")
     setup = LaunchConfiguration('setup')
     robot_description = {'robot_description': robot_description_content}
 
+    # This is good
     initial_joint_controllers = PathJoinSubstitution(
         [FindPackageShare('isaac_manipulator_pick_and_place'), 'config', 'controllers.yaml']
     )
 
-    robotiq_gripper_controllers = PathJoinSubstitution(
-        [FindPackageShare('isaac_manipulator_pick_and_place'), 'config',
-         f'{gripper_type.perform(context)}_controllers.yaml']
-    )
+    # TODO rip this out or replace with something, may require new config file?
+    # robotiq_gripper_controllers = PathJoinSubstitution(
+    #     [FindPackageShare('isaac_manipulator_pick_and_place'), 'config',
+    #      f'{gripper_type.perform(context)}_controllers.yaml']
+    # )
 
     update_rate_config_file = PathJoinSubstitution(
         [
@@ -132,86 +153,32 @@ def launch_setup(context, *args, **kwargs):
             'config', ur_type.perform(context) + '_update_rate.yaml',
         ]
     )
+    
+    ur_package_share_dir = get_package_share_directory('ur_robot_driver')
+    launch_dir = os.path.join(ur_package_share_dir, 'launch')
 
-    ur_control_node = Node(
-        package='ur_robot_driver',
-        executable='ur_ros2_control_node',
-        parameters=[
-            robot_description,
-            update_rate_config_file,
-            ParameterFile(initial_joint_controllers, allow_substs=True),
-        ],
-        output='screen'
+    ur_control_node = IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource(
+                            [launch_dir, '/ur_control.launch.py']
+                            )
+                        ,
+                        launch_arguments={'ur_type': 'ur3e',
+                                  'robot_ip': '192.24.24.24',}.items(),
+            )
+
+    static_transform_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [launch_files_include_dir, '/static_transforms.launch.py']
+        ),
+        launch_arguments={
+            'broadcast_world_base_link': 'False',
+            'camera_type': camera_type,
+            'tracking_type': str(TrackingType.none),
+            'calibration_name': setup,
+        }.items(),
     )
 
-    urscript_interface = Node(
-        package='ur_robot_driver',
-        executable='urscript_interface',
-        parameters=[{'robot_ip': robot_ip}],
-        output='screen',
-    )
-
-    controller_stopper_node = Node(
-        package='ur_robot_driver',
-        executable='controller_stopper_node',
-        name='controller_stopper',
-        output='screen',
-        emulate_tty=True,
-        parameters=[{
-            'consistent_controllers': [
-                'io_and_status_controller',
-                'force_torque_sensor_broadcaster',
-                'joint_state_broadcaster',
-                'speed_scaling_state_broadcaster',]
-            }],
-    )
-
-    robot_state_publisher_node = Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
-        output='both',
-        parameters=[robot_description],
-    )
-
-    # Spawn controllers
-    def controller_spawner(controllers, active=True):
-        inactive_flags = ['--inactive'] if not active else []
-        return Node(
-            package='controller_manager',
-            executable='spawner',
-            arguments=[
-                '--controller-manager',
-                '/controller_manager',
-                '--controller-manager-timeout',
-                controller_spawner_timeout,
-            ]
-            + inactive_flags
-            + controllers,
-        )
-
-    controllers_active = [
-        'joint_state_broadcaster',
-        'io_and_status_controller',
-        'speed_scaling_state_broadcaster',
-        'force_torque_sensor_broadcaster',
-        'robotiq_gripper_controller',
-        'robotiq_activation_controller'
-    ]
-
-    controller_spawners = [controller_spawner(controllers_active)]
-
-    initial_joint_controller_spawner_started = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=[
-            initial_joint_controller,
-            '-c',
-            '/controller_manager',
-            '--controller-manager-timeout',
-            controller_spawner_timeout,
-        ],
-    )
-
+    # TODO update without gripper stuff?
     moveit_config = (
         MoveItConfigsBuilder('ur_with_gripper', package_name='isaac_manipulator_pick_and_place')
         .robot_description_semantic(file_path='srdf/ur_' + gripper_type.perform(context) +
@@ -246,6 +213,7 @@ def launch_setup(context, *args, **kwargs):
         parameters=[move_it_dict],
     )
 
+    # TODO replac ehawk with basler
     if camera_type == str(CameraType.hawk):
         # Image Resolution
         if hawk_depth_mode == str(DepthType.ess_light):
@@ -266,17 +234,20 @@ def launch_setup(context, *args, **kwargs):
         nvblox_rgb_camera_info = '/rgb/camera_info'
         nvblox_depth_camera_info = '/rgb/camera_info'
 
+        # TODO rip this out
         # object detection server and RT-DETR topics
         obj_input_img_topic_name = '/rgb/image_rect_color'
         rtdetr_rgb_image_topic = '/object_detection_server/image_rect'
         rtdetr_rgb_camera_info = '/rgb/camera_info'
         rtdetr_detections_topic = '/detections'
 
+        # TODO rip this out
         # foundation pose server and foundationpose topics
         fp_in_img_topic_name = '/rgb/image_rect_color'
         fp_in_camera_info_topic_name = '/resize/camera_info'
         fp_in_depth_topic_name = '/depth_image'
 
+        # TODO rip this out
         foundation_pose_rgb_image_topic = 'foundation_pose_server/rgb/image_rect_color'
         foundation_pose_rgb_camera_info = 'foundation_pose_server/resize/camera_info'
         foundation_pose_depth_image_topic = 'foundation_pose_server/depth_image'
@@ -298,12 +269,14 @@ def launch_setup(context, *args, **kwargs):
         nvblox_rgb_camera_info = '/camera_1/color/camera_info'
         nvblox_depth_camera_info = '/camera_1/aligned_depth_to_color/camera_info'
 
+        # TODO rip this out
         # object detection server and RT-DETR topics
         obj_input_img_topic_name = '/camera_1/color/image_raw'
         rtdetr_rgb_image_topic = '/object_detection_server/image_rect'
         rtdetr_rgb_camera_info = '/camera_1/color/camera_info'
         rtdetr_detections_topic = '/detections'
 
+        # TODO rip this out
         # foundation pose server and foundationpose topics
         fp_in_img_topic_name = '/camera_1/color/image_raw'
         fp_in_camera_info_topic_name = '/resize/camera_info'
@@ -315,13 +288,16 @@ def launch_setup(context, *args, **kwargs):
             '/foundation_pose_server/camera_1/aligned_depth_to_color/image_raw'
         foundation_pose_detections_topic = '/foundation_pose_server/bbox'
 
+    # TODO add basler calls
     else:
         print('Error received unexpected camera type!')
         exit(-1)
 
     launch_files_include_dir = os.path.join(
         get_package_share_directory('isaac_manipulator_bringup'), 'launch', 'include')
+    
 
+    # TODO replace with custom / dynamic broadcaster
     static_transform_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [launch_files_include_dir, '/static_transforms.launch.py']
@@ -333,7 +309,7 @@ def launch_setup(context, *args, **kwargs):
             'calibration_name': setup,
         }.items(),
     )
-
+    # TODO replace with Basler and or remove that weird framerate crap....
     realsense_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([launch_files_include_dir, '/realsense.launch.py']),
         launch_arguments={
@@ -343,13 +319,13 @@ def launch_setup(context, *args, **kwargs):
         condition=IfCondition(PythonExpression(
             [f'"{camera_type}"', ' == ', f'"{str(CameraType.realsense)}"'])),
     )
-
+    # TODO remove
     hawk_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([launch_files_include_dir, '/hawk.launch.py']),
         condition=IfCondition(PythonExpression(
             [f'"{camera_type}"', ' == ', f'"{str(CameraType.hawk)}"'])),
     )
-
+    # TODO remove
     ess_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([launch_files_include_dir, '/ess.launch.py']),
         launch_arguments={
@@ -359,6 +335,7 @@ def launch_setup(context, *args, **kwargs):
             [f'"{camera_type}"', ' == ', f'"{str(CameraType.hawk)}"'])),
     )
 
+    # TODO update with custom values
     launch_files_include_dir = os.path.join(
         get_package_share_directory('isaac_manipulator_bringup'), 'launch', 'include')
     # We want nvblox to consume the depth map that segments out the robot
@@ -382,6 +359,7 @@ def launch_setup(context, *args, **kwargs):
         condition=IfCondition(PythonExpression([f'\'{enable_nvblox}\'', ' == ', '\'True\'']))
     )
 
+    # TODO update robot asset path stuff
     asset_name = ur_type.perform(context) + '_' + gripper_type.perform(context)
     xrdf_file_path = os.path.join(
         get_package_share_directory('isaac_ros_cumotion_robot_description'), 'xrdf',
@@ -393,6 +371,7 @@ def launch_setup(context, *args, **kwargs):
         f'{asset_name}.urdf',
     )
 
+    # TODO update launch parameters
     cumotion_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [launch_files_include_dir, '/cumotion.launch.py']
@@ -420,8 +399,10 @@ def launch_setup(context, *args, **kwargs):
         }.items(),
     )
 
+    # wtf is this in here for?????
     isaac_ros_ws_path = lu.get_isaac_ros_ws_path()
 
+    # TODO Remove
     rtdetr_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [launch_files_include_dir, '/rtdetr.launch.py']
@@ -439,6 +420,7 @@ def launch_setup(context, *args, **kwargs):
         }.items()
     )
 
+    # TODO remove
     foundationpose_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [launch_files_include_dir, '/foundationpose.launch.py']
@@ -472,10 +454,12 @@ def launch_setup(context, *args, **kwargs):
         }.items()
     )
 
+    # TODO what is this?
     # Add objectinfo servers
     isaac_manipulator_servers_include_dir = os.path.join(
         get_package_share_directory('isaac_manipulator_servers'), 'launch')
 
+    # TODO what is this and can I remove it?
     object_detection_server_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [isaac_manipulator_servers_include_dir, '/object_detection_server.launch.py']),
@@ -485,6 +469,7 @@ def launch_setup(context, *args, **kwargs):
         }.items(),
     )
 
+    # yea remove this
     foundation_pose_server_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [isaac_manipulator_servers_include_dir, '/foundation_pose_server.launch.py']),
@@ -499,10 +484,12 @@ def launch_setup(context, *args, **kwargs):
         }.items(),
     )
 
+    # Idk if I need this
     objectinfo_server_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [isaac_manipulator_servers_include_dir, '/object_info_server.launch.py']),)
 
+    # TODO update this to something else..... or remove
     grasp_config_file = (
         get_package_share_directory('isaac_manipulator_pick_and_place') +
         '/config/' + gripper_type.perform(context) + '_grasps_mac_and_cheese.yaml'
@@ -510,8 +497,14 @@ def launch_setup(context, *args, **kwargs):
     gripper_collision_links = get_gripper_collision_links(GripperType(
         gripper_type.perform(context)))
 
+    # TODO change this mesh.....
+
     mesh_uri = f'package://isaac_manipulator_pick_and_place/'\
                f'meshes/{gripper_type.perform(context)}.obj'
+    
+
+    # TODO HERE IT IS. Update accorgingly
+    # TODO needs new gripper collision, gripper action names (within orchestrator)
     pick_and_place_orchestrator_node = Node(
         package='isaac_manipulator_pick_and_place',
         executable='pick_and_place_orchestrator.py',
@@ -533,6 +526,7 @@ def launch_setup(context, *args, **kwargs):
         output='screen',
     )
 
+    # TODO figure out what this is
     manipulation_container = ComposableNodeContainer(
         name=constants.MANIPULATOR_CONTAINER_NAME,
         namespace='',
@@ -561,6 +555,7 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
+    # TODO review the launch files to run
     nodes_to_start = [
         manipulation_container,
         nvblox_launch,
@@ -569,8 +564,8 @@ def launch_setup(context, *args, **kwargs):
         hawk_launch,
         ess_launch,
         static_transform_launch,
-        rtdetr_launch,
-        foundationpose_launch,
+        # rtdetr_launch,
+        # foundationpose_launch,
         rviz_node,
         ur_control_node,
         controller_stopper_node,
@@ -578,9 +573,9 @@ def launch_setup(context, *args, **kwargs):
         robot_state_publisher_node,
         initial_joint_controller_spawner_started,
         move_group_node,
-        object_detection_server_launch,
-        foundation_pose_server_launch,
-        objectinfo_server_launch,
+        # object_detection_server_launch,
+        # foundation_pose_server_launch,
+        # objectinfo_server_launch,
         pick_and_place_orchestrator_node,
     ] + controller_spawners
 
@@ -595,6 +590,7 @@ def generate_launch_description():
             'ur_type',
             description='Type/series of used UR robot.',
             choices=['ur3', 'ur3e', 'ur5', 'ur5e', 'ur10', 'ur10e', 'ur16e', 'ur20', 'ur30'],
+            default_value='ur3e',
         )
     )
     declared_arguments.append(
@@ -623,12 +619,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'gripper_type',
             description='Type of gripper to use with UR robot',
-            choices=['robotiq_2f_85', 'robotiq_2f_140'],
+            choices=['robotiq_2f_85', 'robotiq_2f_140', 'schmalz'],
+            default_value='schmalz',
         )
     )
     declared_arguments.append(
         DeclareLaunchArgument(
-            'robot_ip', description='IP address by which the robot can be reached.'
+            'robot_ip', description='IP address by which the robot can be reached.',
+            default_value='192.24.24.24'
         )
     )
     declared_arguments.append(
@@ -637,9 +635,10 @@ def generate_launch_description():
             description='Resolution of 3D voxels for nvblox and curobo in meters.'
         )
     )
+    #TODO track this down
     declared_arguments.append(
         DeclareLaunchArgument(
-            'enable_nvblox', default_value='True',
+            'enable_nvblox', default_value='False',
             description='Enable Nvblox for cumotion.'
         )
     )
@@ -676,11 +675,12 @@ def generate_launch_description():
         )
     )
 
+    # TODO add no camera option
     declared_arguments.append(
         DeclareLaunchArgument(
             'camera_type',
             default_value=str(CameraType.realsense),
-            choices=[str(CameraType.hawk), str(CameraType.realsense)],
+            choices=[str(CameraType.hawk), str(CameraType.realsense), None],
             description='Camera sensor to use'
         )
     )
@@ -703,6 +703,7 @@ def generate_launch_description():
         )
     )
 
+    # TODO replace this with custom cal and bounds
     declared_arguments.append(
         DeclareLaunchArgument(
             'setup',
@@ -734,23 +735,13 @@ def generate_launch_description():
         )
     )
 
+    # TODO follow this
     declared_arguments.append(
         DeclareLaunchArgument(
             'use_pose_from_rviz',
             description='When enabled, the end effector interactive marker is used to set the '
                         'place pose through RViz',
-            default_value='False'
-        )
-    )
-
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            'rtdetr_object_class_id',
-            default_value='22',
-            description='Class ID of the object to be detected. The default corresponds to the '
-                        'Mac and Cheese box if the SyntheticaDETR v1.0.0 model file is used. '
-                        'Refer to the SyntheticaDETR model documentation for additional supported '
-                        'objects and their class IDs.',
+            default_value='True'
         )
     )
 

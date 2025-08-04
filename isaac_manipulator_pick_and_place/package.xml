@@ -45,7 +45,9 @@ SPDX-License-Identifier: Apache-2.0
   <depend>robotiq_controllers</depend>
   <depend>robotiq_description</depend>
   <depend>ur_client_library</depend>
+  <depend>ur_msgs</depend>
   <depend>ur_robot_driver</depend>
+  <depend>schmalz_description</depend>
   <depend>vision_msgs</depend>
   <depend>yaml_cpp_vendor</depend>
 
