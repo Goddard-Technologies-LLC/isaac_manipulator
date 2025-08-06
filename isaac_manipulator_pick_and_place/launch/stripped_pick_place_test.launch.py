@@ -266,6 +266,7 @@ def launch_setup(context, *args, **kwargs):
         'config',
         'isaac_ros_cumotion_planning.yaml'
     )
+    
     with open(cumotion_config_file_path) as cumotion_config_file:
         cumotion_config = yaml.safe_load(cumotion_config_file)
     moveit_config.planning_pipelines['isaac_ros_cumotion'] = cumotion_config
